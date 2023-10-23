@@ -2,12 +2,15 @@
 
 namespace App\Filament\Widgets;
 
-use App\Filament\Resources\Shop\OrderResource;
-use App\Models\Shop\Order;
 use Filament\Tables;
+use App\Models\Shop\Order;
 use Filament\Tables\Table;
-use Filament\Widgets\TableWidget as BaseWidget;
 use Squire\Models\Currency;
+use Filament\Forms;
+use Illuminate\Support\Carbon;
+use App\Filament\Resources\Shop\OrderResource;
+use Filament\Widgets\TableWidget as BaseWidget;
+use Illuminate\Contracts\Database\Eloquent\Builder;
 
 class LatestOrders extends BaseWidget
 {
@@ -49,6 +52,45 @@ class LatestOrders extends BaseWidget
             ->actions([
                 Tables\Actions\Action::make('open')
                     ->url(fn (Order $record): string => OrderResource::getUrl('edit', ['record' => $record])),
+            ])
+            ->filters([
+                Tables\Filters\TrashedFilter::make(),
+
+                Tables\Filters\Filter::make('created_at')
+                    ->form([
+                        Forms\Components\DatePicker::make('created_from')
+                            ->placeholder(fn ($state): string => 'Dec 18, ' . now()->subYear()->format('Y')),
+                        Forms\Components\DatePicker::make('created_until')
+                            ->placeholder(fn ($state): string => now()->format('M d, Y')),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['created_from'] ?? null,
+                                fn (Builder $query, $date): Builder => $query->whereDate('created_at', '>=', $date),
+                            )
+                            ->when(
+                                $data['created_until'] ?? null,
+                                fn (Builder $query, $date): Builder => $query->whereDate('created_at', '<=', $date),
+                            );
+                    })
+                    ->indicateUsing(function (array $data): array {
+                        $indicators = [];
+                        if ($data['created_from'] ?? null) {
+                            $indicators['created_from'] = 'Order from ' . Carbon::parse($data['created_from'])->toFormattedDateString();
+                        }
+                        if ($data['created_until'] ?? null) {
+                            $indicators['created_until'] = 'Order until ' . Carbon::parse($data['created_until'])->toFormattedDateString();
+                        }
+
+                        return $indicators;
+                    }),
             ]);
+    }
+
+    static function canView(): bool
+    {
+        return false; //BUG : if return false, no widget displays at all. Either, it displays twice
+        //return true;
     }
 }
